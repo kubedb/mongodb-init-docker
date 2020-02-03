@@ -24,6 +24,10 @@ RUN set -x \
 RUN set -x                                                                                             \
   && curl -fsSL -o peer-finder https://github.com/kmodules/peer-finder/releases/download/v1.0.1-ac/peer-finder \
   && chmod 755 peer-finder
+RUN set -x \
+  && curl -L https://dl.k8s.io/v1.16.3/kubernetes-client-linux-amd64.tar.gz -o kubectl.tar.gz \
+  && tar -xzvf kubectl.tar.gz \
+  && chmod 755 kubernetes/client/bin/kubectl
 
 FROM busybox
 
@@ -33,6 +37,7 @@ COPY sharding.sh /scripts/sharding.sh
 COPY mongos.sh /scripts/mongos.sh
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --from=builder peer-finder /scripts/peer-finder
+COPY --from=builder kubernetes/client/bin/kubectl /usr/bin/kubectl
 
 RUN chmod -c 755 /scripts/peer-finder \
  /scripts/replicaset.sh \

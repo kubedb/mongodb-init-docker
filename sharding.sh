@@ -55,57 +55,17 @@ while read -ra line; do
   peers=("${peers[@]}" "$line")
 done
 
-# Generate the ca cert
+# set the cert files as ssl_args
 if [[ ${SSL_MODE} != "disabled" ]]; then
-  ca_crt=/data/configdb/ca.cert
-  ca_key=/data/configdb/ca.key
-  client_pem=/data/configdb/client.pem
-  if [[ ! -f "$ca_crt" ]] || [[ ! -f "$ca_key" ]]; then
-    log "ENABLE_SSL is set to true, but $ca_crt or $ca_key file does not exists "
+  ca_crt=/var/run/mongodb/tls/ca.crt
+  pem=/var/run/mongodb/tls/mongo.pem
+  client_pem=/var/run/mongodb/tls/client.pem
+  if [[ ! -f "$ca_crt" ]] || [[ ! -f "$pem" ]] || [[ ! -f "$client_pem" ]]; then
+    log "ENABLE_SSL is set to true, but $ca_crt, $pem or $client_pem file does not exists "
     exit 1
   fi
-
-  log "Generating certificate"
-
-  pem=/data/configdb/mongo.pem
   ssl_args=(--tls --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem")
   auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem" --keyFile=/data/configdb/key.txt)
-
-  # extract pod-name.gvr-svc-name.namespace.svc from service_name, which is pod-name.gvr-svc-name.namespace.svc.cluster.local
-  svc_name="$(echo "${service_name%.svc.*}").svc"
-
-  # Move into /work-dir
-  pushd /work-dir
-
-  cat >openssl.cnf <<EOL
-[req]
-req_extensions = v3_req
-distinguished_name = req_distinguished_name
-[req_distinguished_name]
-[ v3_req ]
-basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-extendedKeyUsage  = serverAuth, clientAuth
-subjectAltName = @alt_names
-[alt_names]
-DNS.1 = $(echo -n "$my_hostname" | sed s/-[0-9]*$//)
-DNS.2 = $my_hostname
-DNS.3 = $service_name
-DNS.4 = $svc_name
-DNS.5 = localhost
-EOL
-
-  # Generate the certs
-  export RANDFILE=/work-dir/.rnd
-  openssl genrsa -out mongo.key 2048
-  openssl req -new -key mongo.key -out mongo.csr -subj "/OU=MongoDB/CN=$my_hostname" -config openssl.cnf
-  openssl x509 -req -in mongo.csr \
-    -CA "$ca_crt" -CAkey "$ca_key" -CAcreateserial \
-    -out mongo.crt -days 3650 -extensions v3_req -extfile openssl.cnf
-
-  rm mongo.csr
-  cat mongo.crt mongo.key >$pem
-  rm mongo.key mongo.crt
 fi
 
 log "Peers: ${peers[*]}"
