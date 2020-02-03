@@ -31,6 +31,7 @@ RUN set -x \
 
 FROM busybox
 
+COPY install.sh /scripts/install.sh
 COPY replicaset.sh /scripts/replicaset.sh
 COPY configdb.sh /scripts/configdb.sh
 COPY sharding.sh /scripts/sharding.sh
@@ -40,6 +41,7 @@ COPY --from=builder peer-finder /scripts/peer-finder
 COPY --from=builder kubernetes/client/bin/kubectl /usr/bin/kubectl
 
 RUN chmod -c 755 /scripts/peer-finder \
+ /scripts/install.sh \
  /scripts/replicaset.sh \
  /scripts/configdb.sh \
  /scripts/sharding.sh \
