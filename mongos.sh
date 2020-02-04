@@ -49,7 +49,7 @@ function shutdown_mongo() {
     args='force: true'
   fi
   log "Shutting down mongos ($args)..."
-  mongo admin "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.shutdownServer({$args})"
+  mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.shutdownServer({$args})"
 }
 
 # set the cert files as ssl_args
@@ -60,8 +60,8 @@ if [[ ${SSL_MODE} != "disabled" ]]; then
     log "ENABLE_SSL is set to true, but $ca_crt or $pem file does not exist"
     exit 1
   fi
-  ssl_args=(--ssl --sslCAFile "$ca_crt" --sslPEMKeyFile "$pem")
-  auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --sslCAFile "$ca_crt" --sslPEMKeyFile "$pem" --keyFile=/data/configdb/key.txt)
+  ssl_args=(--tls --tlsCAFile "$ca_crt" --tlsPEMKeyFile "$pem")
+  auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsPEMKeyFile "$pem" --keyFile=/data/configdb/key.txt)
 fi
 
 log "Ping Config Server replicaset : $CONFIGDB_REPSET"
@@ -80,7 +80,7 @@ log "Starting a mongos instance..."
 mongos --config /data/configdb/mongod.conf --configdb="$CONFIGDB_REPSET" --port=27017 "${auth_args[@]}" --bind_ip=0.0.0.0 | tee -a /work-dir/log.txt &
 
 log "Waiting for mongos to be ready..."
-until mongo "${ssl_args[@]}" --eval "db.adminCommand('ping')"; do
+until mongo --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"; do
   log "Retrying..."
   sleep 2
 done
@@ -93,20 +93,20 @@ log "Shard list $total: ${SHARD_REPSETS_LIST[*]}"
 for ((i = 0; i < $total; i++)); do
   repSet=${SHARD_REPSETS_LIST[$i]}
   log "Add shard: $repSet"
-  mongo "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.addShard('$repSet');"
+  mongo --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.addShard('$repSet');"
 done
 
 log "Ensure admin user credentials"
 if [[ $(mongo admin "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.system.users.find({user:'$admin_user'}).count()" | tail -1) == 0 ]]; then
   log "Creating admin user..."
-  mongo admin "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
+  mongo admin --host localhost "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
 fi
 
 # Initialize Part for KubeDB. ref: https://github.com/docker-library/mongo/blob/a499e81e743b05a5237e2fd700c0284b17d3d416/3.4/docker-entrypoint.sh#L302
 # Start
 log "Ensure Initializing init scripts"
-if [[ $(mongo admin "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find({'_id' : 'kubedb','kubedb' : 'initialized'}).count()" | tail -1) == 0 ]] &&
-  [[ $(mongo admin "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.insert({'_id' : 'kubedb','kubedb' : 'initialized'});" |
+if [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find({'_id' : 'kubedb','kubedb' : 'initialized'}).count()" | tail -1) == 0 ]] &&
+  [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.insert({'_id' : 'kubedb','kubedb' : 'initialized'});" |
     grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
 
   export MONGO_INITDB_DATABASE="${MONGO_INITDB_DATABASE:-test}"
@@ -121,7 +121,7 @@ if [[ $(mongo admin "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find(
         ;;
       *.js)
         echo "$0: running $f 1"
-        mongo "$MONGO_INITDB_DATABASE" "${admin_creds[@]}" "${ssl_args[@]}" "$f"
+        mongo --host localhost "$MONGO_INITDB_DATABASE" "${admin_creds[@]}" "${ssl_args[@]}" "$f"
         ;;
       *) echo "$0: ignoring $f" ;;
     esac
