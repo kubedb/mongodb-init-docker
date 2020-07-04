@@ -64,4 +64,5 @@ fi
 if [ -f "/keydir-readonly/key.txt" ]; then
     cp /keydir-readonly/key.txt /data/configdb/key.txt
     chmod 600 /data/configdb/key.txt
+    chown -R 1001:0 /data/configdb/key.txt
 fi

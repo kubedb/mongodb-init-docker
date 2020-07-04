@@ -36,6 +36,8 @@ COPY replicaset.sh /scripts/replicaset.sh
 COPY configdb.sh /scripts/configdb.sh
 COPY sharding.sh /scripts/sharding.sh
 COPY mongos.sh /scripts/mongos.sh
+COPY replicaset-inmemory.sh /scripts/replicaset-inmemory.sh
+COPY sharding-inmemory.sh /scripts/sharding-inmemory.sh
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --from=builder peer-finder /scripts/peer-finder
 COPY --from=builder kubernetes/client/bin/kubectl /usr/bin/kubectl
@@ -46,6 +48,8 @@ RUN chmod -c 755 /scripts/peer-finder \
  /scripts/configdb.sh \
  /scripts/sharding.sh \
  /scripts/mongos.sh \
+ /scripts/replicaset-inmemory.sh \
+ /scripts/sharding-inmemory.sh \
  /usr/local/bin/entrypoint.sh
 
 ENV SSL_MODE ""
