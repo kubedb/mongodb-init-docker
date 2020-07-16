@@ -26,13 +26,10 @@ if [[ -d ${INIT_DIR} ]] && [[ -d ${DEST_DIR} ]]; then
 fi
 
 EXIT_CODE=0
-if [[ "$SSL_MODE" != "disabled" ]];
-then
-    if [[ "$NODE_TYPE" != "standalone" ]];
-    then
+if [[ "$SSL_MODE" != "disabled" ]]; then
+    if [[ "$NODE_TYPE" != "standalone" ]]; then
         kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME || EXIT_CODE=$?
-        if [[ $EXIT_CODE == 0 ]];
-        then
+        if [[ $EXIT_CODE == 0 ]]; then
             kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME -o jsonpath='{.data.\ca\.crt}' | base64 -d >/var/run/mongodb/tls/ca.crt
             kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME -o jsonpath='{.data.\tls\.crt}' | base64 -d >/var/run/mongodb/tls/mongo.pem
             kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME -o jsonpath='{.data.\tls\.key}' | base64 -d >>/var/run/mongodb/tls/mongo.pem
