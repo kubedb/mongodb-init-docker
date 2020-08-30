@@ -25,6 +25,11 @@ if [[ -d ${INIT_DIR} ]] && [[ -d ${DEST_DIR} ]]; then
     cp -a ${INIT_DIR}/* ${DEST_DIR}
 fi
 
+if [[ "$SSL_MODE" != "disabled" ]]; then
+    cat /client-cert/tls.crt /client-cert/tls.key > /var/run/mongodb/tls/client.pem
+    cat /server-cert/tls.crt /server-cert/tls.key > /var/run/mongodb/tls/mongo.pem
+    cp /server-cert/ca.crt /var/run/mongodb/tls/ca.crt
+fi
 
 if [ -f "/configdb-readonly/mongod.conf" ]; then
     cp /configdb-readonly/mongod.conf /data/configdb/mongod.conf
