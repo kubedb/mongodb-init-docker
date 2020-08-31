@@ -25,31 +25,10 @@ if [[ -d ${INIT_DIR} ]] && [[ -d ${DEST_DIR} ]]; then
     cp -a ${INIT_DIR}/* ${DEST_DIR}
 fi
 
-EXIT_CODE=0
 if [[ "$SSL_MODE" != "disabled" ]]; then
-    if [[ "$NODE_TYPE" != "standalone" ]]; then
-        kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME || EXIT_CODE=$?
-        if [[ $EXIT_CODE == 0 ]]; then
-            kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME -o jsonpath='{.data.\ca\.crt}' | base64 -d >/var/run/mongodb/tls/ca.crt
-            kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME -o jsonpath='{.data.\tls\.crt}' | base64 -d >/var/run/mongodb/tls/mongo.pem
-            kubectl get secrets -n $HOST_NAMESPACE $HOST_NAME -o jsonpath='{.data.\tls\.key}' | base64 -d >>/var/run/mongodb/tls/mongo.pem
-            kubectl get secrets -n $HOST_NAMESPACE $CLIENT_CERT_NAME -o jsonpath='{.data.\tls\.crt}' | base64 -d >/var/run/mongodb/tls/client.pem
-            kubectl get secrets -n $HOST_NAMESPACE $CLIENT_CERT_NAME -o jsonpath='{.data.\tls\.key}' | base64 -d >>/var/run/mongodb/tls/client.pem
-            chmod 600 /var/run/mongodb/tls/ca.crt
-            chmod 600 /var/run/mongodb/tls/mongo.pem
-            chmod 600 /var/run/mongodb/tls/client.pem
-        else
-            echo "cert-secret $HOST_NAMESPACE/$HOST_NAME not ready"
-        fi
-    else
-        kubectl get secrets -n $HOST_NAMESPACE $SERVER_CERT_NAME -o jsonpath='{.data.\ca\.crt}' | base64 -d >/var/run/mongodb/tls/ca.crt
-        kubectl get secrets -n $HOST_NAMESPACE $SERVER_CERT_NAME -o jsonpath='{.data.\tls\.crt}' | base64 -d >/var/run/mongodb/tls/mongo.pem
-        kubectl get secrets -n $HOST_NAMESPACE $SERVER_CERT_NAME -o jsonpath='{.data.\tls\.key}' | base64 -d >>/var/run/mongodb/tls/mongo.pem
-        kubectl get secrets -n $HOST_NAMESPACE $CLIENT_CERT_NAME -o jsonpath='{.data.\tls\.crt}' | base64 -d >/var/run/mongodb/tls/client.pem
-        kubectl get secrets -n $HOST_NAMESPACE $CLIENT_CERT_NAME -o jsonpath='{.data.\tls\.key}' | base64 -d >>/var/run/mongodb/tls/client.pem
-    fi
-else
-    echo "TLS disabled"
+    cat /client-cert/tls.crt /client-cert/tls.key > /var/run/mongodb/tls/client.pem
+    cat /server-cert/tls.crt /server-cert/tls.key > /var/run/mongodb/tls/mongo.pem
+    cp /server-cert/ca.crt /var/run/mongodb/tls/ca.crt
 fi
 
 if [ -f "/configdb-readonly/mongod.conf" ]; then
