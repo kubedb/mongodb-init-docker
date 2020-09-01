@@ -28,7 +28,9 @@ fi
 if [[ "$SSL_MODE" != "disabled" ]]; then
     cat /client-cert/tls.crt /client-cert/tls.key > /var/run/mongodb/tls/client.pem
     cat /server-cert/tls.crt /server-cert/tls.key > /var/run/mongodb/tls/mongo.pem
-    cp /server-cert/ca.crt /var/run/mongodb/tls/ca.crt
+
+    # used cat over cp so that ca.crt has 444 permission
+    cat /server-cert/ca.crt > /var/run/mongodb/tls/ca.crt
 fi
 
 if [ -f "/configdb-readonly/mongod.conf" ]; then
