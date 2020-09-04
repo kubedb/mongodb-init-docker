@@ -55,9 +55,8 @@ if [[ ${SSL_MODE} != "disabled" ]]; then
         log "ENABLE_SSL is set to true, but $ca_crt or $pem or $client_pem file does not exist"
         exit 1
     fi
-
-    ssl_args=(--tls --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem")
-    auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem" --keyFile=/data/configdb/key.txt)
+    ssl_args=(--tls --tlsCAFile "$ca_crt" --tlsPEMKeyFile "$pem")
+    auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsPEMKeyFile "$pem" --keyFile=/data/configdb/key.txt)
 fi
 
 log "Ping Config Server replicaset : $CONFIGDB_REPSET"
