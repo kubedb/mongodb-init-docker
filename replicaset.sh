@@ -16,8 +16,11 @@
 
 # ref: https://github.com/kubernetes/charts/blob/master/stable/mongodb-replicaset/init/on-start.sh
 
+source /init-scripts/common.sh
 replica_set="$REPLICA_SET"
 script_name=${0##*/}
+
+sleep $DEFAULT_WAIT_SECS
 
 if [[ "$AUTH" == "true" ]]; then
     admin_user="$MONGO_INITDB_ROOT_USERNAME"
@@ -25,23 +28,6 @@ if [[ "$AUTH" == "true" ]]; then
     admin_creds=(-u "$admin_user" -p "$admin_password" --authenticationDatabase admin)
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --auth --keyFile=/data/configdb/key.txt)
 fi
-
-log() {
-    local msg="$1"
-    local timestamp
-    timestamp=$(date --iso-8601=ns)
-    echo "[$timestamp] [$script_name] $msg" | tee -a /work-dir/log.txt
-}
-
-function shutdown_mongo() {
-    if [[ $# -eq 1 ]]; then
-        args="timeoutSecs: $1"
-    else
-        args='force: true'
-    fi
-    log "Shutting down MongoDB ($args)..."
-    mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.shutdownServer({$args})"
-}
 
 my_hostname=$(hostname)
 log "Bootstrapping MongoDB replica set member: $my_hostname"
@@ -59,8 +45,9 @@ done
 if [[ ${SSL_MODE} != "disabled" ]]; then
     ca_crt=/var/run/mongodb/tls/ca.crt
     pem=/var/run/mongodb/tls/mongo.pem
-    if [[ ! -f "$ca_crt" ]] || [[ ! -f "$pem" ]]; then
-        log "ENABLE_SSL is set to true, but $ca_crt or $pem file does not exist"
+    client_pem=/var/run/mongodb/tls/client.pem
+    if [[ ! -f "$ca_crt" ]] || [[ ! -f "$pem" ]] || [[ ! -f "$client_pem" ]]; then
+        log "ENABLE_SSL is set to true, but $ca_crt or $pem or $client_pem file does not exist"
         exit 1
     fi
 
@@ -70,45 +57,49 @@ fi
 
 log "Peers: ${peers[*]}"
 
-log "Starting a MongoDB instance..."
-mongod --config /data/configdb/mongod.conf --dbpath=/data/db --replSet="$replica_set" --port=27017 "${auth_args[@]}" --bind_ip=0.0.0.0 2>&1 | tee -a /work-dir/log.txt &
-
 log "Waiting for MongoDB to be ready..."
 until mongo --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"; do
-    log "Retrying..."
+    log "Retrying to ping..."
     sleep 2
 done
 
 log "Initialized."
 
-# try to find a master and add yourself to its replica set.
-for peer in "${peers[@]}"; do
-    if mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --eval "rs.isMaster()" | grep '"ismaster" : true'; then
-        log "Found master: $peer"
-        log "Adding myself ($service_name) to replica set..."
-        mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --eval "rs.add('$service_name')"
+# check if the replica is already added in replicaset
+if [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; then
+    log "($service_name) already added in replicaset"
+    log "Good bye."
+    exit 0
+else
+    # try to find a master and add yourself to its replica set.
+    for peer in "${peers[@]}"; do
+        if mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --eval "rs.isMaster()" | grep '"ismaster" : true'; then
+            log "Found master: $peer"
 
-        sleep 3
+            log "Adding myself ($service_name) to replica set..."
+            retry mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.add('$service_name'))"
 
-        log 'Waiting for replica to reach SECONDARY state...'
-        until printf '.' && [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; do
-            sleep 1
-        done
+            sleep $DEFAULT_WAIT_SECS
 
-        log '✓ Replica reached SECONDARY state.'
+            log 'Waiting for replica to reach SECONDARY state...'
+            until printf '.' && [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; do
+                sleep 1
+            done
 
-        shutdown_mongo "60"
-        log "Good bye."
-        exit 0
-    fi
-done
+            log '✓ Replica reached SECONDARY state.'
+
+            log "Good bye."
+            exit 0
+        fi
+    done
+fi
 
 # else initiate a replica set with yourself.
 if mongo --host localhost "${ssl_args[@]}" --eval "rs.status()" | grep "no replset config has been received"; then
     log "Initiating a new replica set with myself ($service_name)..."
-    mongo --host localhost "${ssl_args[@]}" --eval "rs.initiate({'_id': '$replica_set', 'members': [{'_id': 0, 'host': '$service_name'}]})"
+    retry mongo --host localhost "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.initiate({'_id': '$replica_set', 'writeConcernMajorityJournalDefault': false, 'members': [{'_id': 0, 'host': '$service_name'}]}))"
 
-    sleep 3
+    sleep $DEFAULT_WAIT_SECS
 
     log 'Waiting for replica to reach PRIMARY state...'
     until printf '.' && [[ $(mongo --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '1' ]]; do
@@ -119,7 +110,7 @@ if mongo --host localhost "${ssl_args[@]}" --eval "rs.status()" | grep "no repls
 
     if [[ "$AUTH" == "true" ]]; then
         log "Creating admin user..."
-        mongo admin --host localhost "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
+        mongo admin --host localhost "${ssl_args[@]}" --quiet --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
     fi
 
     # Initialize Part for KubeDB.
@@ -148,5 +139,13 @@ if mongo --host localhost "${ssl_args[@]}" --eval "rs.status()" | grep "no repls
     log "Done."
 fi
 
-shutdown_mongo
+if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
+    user=$(openssl x509 -in "$client_pem" -inform PEM -subject -nameopt RFC2253 -noout)
+    # remove prefix 'subject= ' or 'subject='
+    user=$(echo ${user#"subject="})
+    #xref: https://docs.mongodb.com/manual/tutorial/configure-x509-client-authentication/#procedures
+    log "Creating root user $user for SSL..."
+    mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"$user\",roles:[{role: 'root', db: 'admin'}],})"
+fi
+
 log "Good bye."
