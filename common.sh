@@ -16,7 +16,7 @@
 
 # ref: https://github.com/kubernetes/charts/blob/master/stable/mongodb-replicaset/init/on-start.sh
 
-DEFAULT_WAIT_SECS=3
+DEFAULT_WAIT_SECS=5
 script_name=${0##*/}
 
 log() {
@@ -36,8 +36,14 @@ retry() {
 
         if [ "$(echo $out | jq -r '.ok')" == "1" ]; then
             return 0
-        else
+        elif echo $out | grep "failed: Name or service not known"; then
             sleep $delay
+        elif echo $out | jq -r '.errmsg' | grep "HostUnreachable"; then
+            sleep $delay
+        elif echo $out | jq -r '.errmsg' | grep "Host not found"; then
+            sleep $delay
+        else
+            return 0
         fi
     done
 }

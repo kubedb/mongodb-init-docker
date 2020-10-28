@@ -62,46 +62,65 @@ until mongo --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"; 
     sleep 2
 done
 
-log "Initialized."
+# check rs.isMaster() (we can run this without authentication) on each peer to see each of them are ready
+retry mongo admin --host localhost "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
 
-# check if the replica is already added in replicaset
-if [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; then
-    log "($service_name) already added in replicaset"
+for peer in "${peers[@]}"; do
+    retry mongo admin --host "$peer" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
+done
+
+log "Initialized."
+sleep $DEFAULT_WAIT_SECS
+
+if [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '1' ]]; then
+    log "($service_name) is already master"
     log "Good bye."
     exit 0
-else
-    # try to find a master and add yourself to its replica set.
-    for peer in "${peers[@]}"; do
-        if mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --eval "rs.isMaster()" | grep '"ismaster" : true'; then
-            log "Found master: $peer"
-
-            log "Adding myself ($service_name) to replica set..."
-            retry mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.add('$service_name'))"
-
-            sleep $DEFAULT_WAIT_SECS
-
-            log 'Waiting for replica to reach SECONDARY state...'
-            until printf '.' && [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; do
-                sleep 1
-            done
-
-            log '✓ Replica reached SECONDARY state.'
-
-            log "Good bye."
-            exit 0
-        fi
-    done
 fi
+
+if [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; then
+    log "($service_name) is already added in replicaset"
+    log "Good bye."
+    exit 0
+fi
+
+# try to find a master and add yourself to its replica set.
+for peer in "${peers[@]}"; do
+    # re-check rs.isMaster() on the peer to see it is ready
+    retry mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
+    out=$(mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())")
+    log "$out"
+    if echo "$out" | jq -r '.ismaster' | grep 'true'; then
+        log "Found master: $peer"
+
+        # Retrying command until successful
+        log "Adding myself ($service_name) to replica set..."
+        retry mongo admin --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.add('$service_name'))"
+
+        sleep $DEFAULT_WAIT_SECS
+
+        log 'Waiting for replica to reach SECONDARY state...'
+        until printf '.' && [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; do
+            sleep 1
+        done
+
+        log '✓ Replica reached SECONDARY state.'
+
+        log "Good bye."
+        exit 0
+    fi
+done
 
 # else initiate a replica set with yourself.
 if mongo --host localhost "${ssl_args[@]}" --eval "rs.status()" | grep "no replset config has been received"; then
+    # Retrying command until successful
     log "Initiating a new replica set with myself ($service_name)..."
     retry mongo --host localhost "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.initiate({'_id': '$replica_set', 'members': [{'_id': 0, 'host': '$service_name'}]}))"
 
     sleep $DEFAULT_WAIT_SECS
 
     log 'Waiting for replica to reach PRIMARY state...'
-    until printf '.' && [[ $(mongo --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '1' ]]; do
+    until printf '.' && [[ $(mongo --host localhost "${ssl_args[@]}" --quiet --eval "rs.isMaster().ismaster") == 'true' ]]; do
         sleep 1
     done
 
