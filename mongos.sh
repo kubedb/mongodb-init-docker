@@ -17,6 +17,7 @@
 set -eo pipefail
 
 # ref: https://github.com/kubernetes/charts/blob/master/stable/mongodb-replicaset/init/on-start.sh
+source /init-scripts/common.sh
 
 export CONFIGDB_REPSET=${CONFIGDB_REPSET:-}
 export SHARD_REPSETS=${SHARD_REPSETS:-}
@@ -35,13 +36,6 @@ if [[ "$AUTH" == "true" ]]; then
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --keyFile=/data/configdb/key.txt)
 fi
 
-log() {
-    local msg="$1"
-    local timestamp
-    timestamp=$(date --iso-8601=ns)
-    echo "[$timestamp] $msg" | tee -a /work-dir/log.txt
-}
-
 function shutdown_mongo() {
     if [[ $# -eq 1 ]]; then
         args="timeoutSecs: $1"
@@ -56,10 +50,12 @@ function shutdown_mongo() {
 if [[ ${SSL_MODE} != "disabled" ]]; then
     ca_crt=/var/run/mongodb/tls/ca.crt
     pem=/var/run/mongodb/tls/mongo.pem
-    if [[ ! -f "$ca_crt" ]] || [[ ! -f "$pem" ]]; then
-        log "ENABLE_SSL is set to true, but $ca_crt or $pem file does not exist"
+    client_pem=/var/run/mongodb/tls/client.pem
+    if [[ ! -f "$ca_crt" ]] || [[ ! -f "$pem" ]] || [[ ! -f "$client_pem" ]]; then
+        log "ENABLE_SSL is set to true, but $ca_crt or $pem or $client_pem file does not exist"
         exit 1
     fi
+
     ssl_args=(--tls --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem")
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem" --keyFile=/data/configdb/key.txt)
 fi
@@ -130,6 +126,14 @@ if [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval
     # END
 
     log "Done."
+fi
+
+if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
+    user=$(openssl x509 -in "$client_pem" -inform PEM -subject -nameopt RFC2253 -noout)
+    # remove prefix 'subject= ' or 'subject='
+    user=$(echo ${user#"subject="})
+    log "Creating root user $user for SSL..." #xref: https://docs.mongodb.com/manual/tutorial/configure-x509-client-authentication/#procedures
+    mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"$user\",roles:[{role: 'root', db: 'admin'}],})"
 fi
 
 shutdown_mongo
