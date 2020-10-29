@@ -60,9 +60,10 @@ log "Peers: ${peers[*]}"
 log "Waiting for MongoDB to be ready..."
 retry mongo --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"
 
-# check rs.isMaster() (we can run this without authentication) on each peer to see each of them are ready
+# check rs.isMaster() (we can run this without authentication) on self to see it is ready
 retry mongo admin --host localhost "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
 
+# check rs.isMaster() on each peer to see each of them are ready
 for peer in "${peers[@]}"; do
     retry mongo admin --host "$peer" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
 done
