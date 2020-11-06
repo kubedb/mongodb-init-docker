@@ -134,20 +134,20 @@ if mongo --host localhost "${ssl_args[@]}" --eval "rs.status()" | grep "no repls
     # ref: https://github.com/docker-library/mongo/blob/a499e81e743b05a5237e2fd700c0284b17d3d416/3.4/docker-entrypoint.sh#L302
     # Start
     export MONGO_INITDB_DATABASE="${MONGO_INITDB_DATABASE:-test}"
-
+    log "Initialize init scripts"
     echo
     ls -la /docker-entrypoint-initdb.d
     for f in /docker-entrypoint-initdb.d/*; do
         case "$f" in
             *.sh)
-                echo "$0: running $f"
+                log "$0: running $f"
                 . "$f"
                 ;;
             *.js)
-                echo "$0: running $f 1"
-                mongo --host localhost "$MONGO_INITDB_DATABASE" "${admin_creds[@]}" "${ssl_args[@]}" "$f"
+                log "$0: running $f 1"
+                log "$(mongo --host localhost --quiet "$MONGO_INITDB_DATABASE" "${admin_creds[@]}" "${ssl_args[@]}" "$f")"
                 ;;
-            *) echo "$0: ignoring $f" ;;
+            *) log "$0: ignoring $f" ;;
         esac
         echo
     done

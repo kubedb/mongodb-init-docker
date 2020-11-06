@@ -112,14 +112,14 @@ if [[ $(mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval
     for f in /docker-entrypoint-initdb.d/*; do
         case "$f" in
             *.sh)
-                echo "$0: running $f"
+                log "$0: running $f"
                 . "$f"
                 ;;
             *.js)
-                echo "$0: running $f 1"
-                mongo --host localhost "$MONGO_INITDB_DATABASE" "${admin_creds[@]}" "${ssl_args[@]}" "$f"
+                log "$0: running $f 1"
+                log "$(mongo --host localhost --quiet "$MONGO_INITDB_DATABASE" "${admin_creds[@]}" "${ssl_args[@]}" "$f")"
                 ;;
-            *) echo "$0: ignoring $f" ;;
+            *) log "$0: ignoring $f" ;;
         esac
         echo
     done
