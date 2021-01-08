@@ -42,6 +42,8 @@ retry() {
             sleep $delay
         elif echo $out | jq -r '.errmsg' | grep "Host not found"; then
             sleep $delay
+        elif echo $out | jq -r '.errmsg' | grep "SocketException"; then
+            sleep $delay
         else
             return 0
         fi
