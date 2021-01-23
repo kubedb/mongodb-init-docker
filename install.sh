@@ -21,16 +21,29 @@ set -eo pipefail
 INIT_DIR="${INIT_DIR:-/scripts}"
 DEST_DIR="${DEST_DIR:-/init-scripts}"
 
-if [[ -d ${INIT_DIR} ]] && [[ -d ${DEST_DIR} ]]; then
-    cp -a ${INIT_DIR}/* ${DEST_DIR}
-fi
-
 if [[ "$SSL_MODE" != "disabled" ]]; then
     cat /client-cert/tls.crt /client-cert/tls.key >/var/run/mongodb/tls/client.pem
     cat /server-cert/tls.crt /server-cert/tls.key >/var/run/mongodb/tls/mongo.pem
 
     # used cat over cp so that ca.crt has 444 permission
     cat /server-cert/ca.crt >/var/run/mongodb/tls/ca.crt
+fi
+
+client_pem=/var/run/mongodb/tls/client.pem
+if [[ "$SSL_MODE" != "disabled" ]] && [[ -f "$client_pem" ]]; then
+    user=$(openssl x509 -in "$client_pem" -inform PEM -subject -nameopt RFC2253 -noout)
+    user=$(echo ${user#"subject="})
+    export USER=$user
+
+    envsubst '${USER}' <${INIT_DIR}/replicaset.sh >${DEST_DIR}/replicaset.sh
+    envsubst '${USER}' <${INIT_DIR}/sharding.sh >${DEST_DIR}/sharding.sh
+    envsubst '${USER}' <${INIT_DIR}/mongos.sh >${DEST_DIR}/mongos.sh
+    rm ${INIT_DIR}/replicaset.sh ${INIT_DIR}/mongos.sh ${INIT_DIR}/sharding.sh
+    chmod -c 755 ${DEST_DIR}/replicaset.sh ${DEST_DIR}/sharding.sh ${DEST_DIR}/mongos.sh
+fi
+
+if [[ -d ${INIT_DIR} ]] && [[ -d ${DEST_DIR} ]]; then
+    cp -a ${INIT_DIR}/* ${DEST_DIR}
 fi
 
 if [ -f "/configdb-readonly/mongod.conf" ]; then
