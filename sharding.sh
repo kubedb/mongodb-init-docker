@@ -157,8 +157,8 @@ fi
 
 if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
     #xref: https://docs.mongodb.com/manual/tutorial/configure-x509-client-authentication/#procedures
-    log "Creating root user ${USER} for SSL..."
-    mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"${USER}\",roles:[{role: 'root', db: 'admin'}],})"
+    log "Creating root user ${INJECT_USER} for SSL..."
+    mongo admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"${INJECT_USER}\",roles:[{role: 'root', db: 'admin'}],})"
 fi
 
 log "Good bye."
