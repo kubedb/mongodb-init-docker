@@ -25,7 +25,9 @@ RUN set -x                                                                      
   && curl -fsSL -o peer-finder https://github.com/kmodules/peer-finder/releases/download/v1.0.1-ac/peer-finder \
   && chmod 755 peer-finder
 
-FROM busybox
+FROM alpine:latest
+
+RUN apk add --no-cache openssl gettext
 
 COPY install.sh /scripts/install.sh
 COPY replicaset.sh /scripts/replicaset.sh
@@ -33,7 +35,6 @@ COPY configdb.sh /scripts/configdb.sh
 COPY sharding.sh /scripts/sharding.sh
 COPY mongos.sh /scripts/mongos.sh
 COPY common.sh /scripts/common.sh
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --from=builder peer-finder /scripts/peer-finder
 
 RUN chmod -c 755 /scripts/peer-finder \
@@ -42,10 +43,9 @@ RUN chmod -c 755 /scripts/peer-finder \
  /scripts/configdb.sh \
  /scripts/sharding.sh \
  /scripts/mongos.sh \
- /scripts/common.sh \
- /usr/local/bin/entrypoint.sh
+ /scripts/common.sh
 
 ENV SSL_MODE ""
 ENV CLUSTER_AUTH_MODE ""
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/scripts/install.sh"]
