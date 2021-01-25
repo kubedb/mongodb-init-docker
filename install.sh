@@ -33,7 +33,7 @@ client_pem=/var/run/mongodb/tls/client.pem
 if [[ "$SSL_MODE" != "disabled" ]] && [[ -f "$client_pem" ]]; then
     user=$(openssl x509 -in "$client_pem" -inform PEM -subject -nameopt RFC2253 -noout)
     user=$(echo ${user#"subject="})
-    export USER=$user
+    export INJECT_USER=$user
 
     envsubst '${INJECT_USER}' <${INIT_DIR}/replicaset.sh >${DEST_DIR}/replicaset.sh
     envsubst '${INJECT_USER}' <${INIT_DIR}/sharding.sh >${DEST_DIR}/sharding.sh
