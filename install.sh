@@ -22,8 +22,19 @@ INIT_DIR="${INIT_DIR:-/scripts}"
 DEST_DIR="${DEST_DIR:-/init-scripts}"
 
 if [[ "$SSL_MODE" != "disabled" ]]; then
-    cat /client-cert/tls.crt /client-cert/tls.key >/var/run/mongodb/tls/client.pem
-    cat /server-cert/tls.crt /server-cert/tls.key >/var/run/mongodb/tls/mongo.pem
+    # Creating client.pem file combining client crt and key
+    cat /client-cert/tls.crt >/var/run/mongodb/tls/client.pem
+    if [[ $(tail -c1 /var/run/mongodb/tls/client.pem) != "\n" ]]; then # Checking if the crt file has a trailing newline, if not then added a newline
+        echo >>/var/run/mongodb/tls/client.pem
+    fi
+    cat /client-cert/tls.key >>/var/run/mongodb/tls/client.pem
+
+    # Creating mongo.pem file combining server crt and key
+    cat /server-cert/tls.crt >/var/run/mongodb/tls/mongo.pem
+    if [[ $(tail -c1 /var/run/mongodb/tls/mongo.pem) != "\n" ]]; then # Checking if the crt file has a trailing newline, if not then added a newline
+        echo >>/var/run/mongodb/tls/mongo.pem
+    fi
+    cat /server-cert/tls.key >>/var/run/mongodb/tls/mongo.pem
 
     # used cat over cp so that ca.crt has 444 permission
     cat /server-cert/ca.crt >/var/run/mongodb/tls/ca.crt
