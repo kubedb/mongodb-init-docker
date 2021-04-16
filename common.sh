@@ -49,3 +49,10 @@ retry() {
         fi
     done
 }
+
+# bug: https://jira.mongodb.org/browse/SERVER-42065
+# ref: https://www.golinuxcloud.com/linux-check-ipv6-enabled/#Method_1_Check_IPv6_module_status
+ipv6=
+if [ $(cat /sys/module/ipv6/parameters/disable) -eq "0" ]; then
+    ipv6="--ipv6"
+fi
