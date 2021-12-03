@@ -63,6 +63,10 @@ else
     touch /data/configdb/mongod.conf
 fi
 
+if [ -f "/configdb-readonly/configuration.js" ]; then
+    cp /configdb-readonly/configuration.js /data/configdb/configuration.js
+fi
+
 if [ -f "/keydir-readonly/key.txt" ]; then
     cp /keydir-readonly/key.txt /data/configdb/key.txt
     chmod 600 /data/configdb/key.txt
