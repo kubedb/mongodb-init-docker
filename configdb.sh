@@ -29,7 +29,7 @@ if [[ "$AUTH" == "true" ]]; then
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --auth --keyFile=/data/configdb/key.txt)
 fi
 
-my_hostname=$(hostname)
+my_hostname=$(uname -n)
 log "Bootstrapping MongoDB replica set member: $my_hostname"
 
 log "Reading standard input..."
