@@ -29,22 +29,30 @@ if [[ "$AUTH" == "true" ]]; then
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --auth --keyFile=/data/configdb/key.txt)
 fi
 
-my_hostname=$(hostname)
-log "Bootstrapping MongoDB replica set arbiter member: $my_hostname"
-service_name="${my_hostname}.${GOVERNING_SERVICE_NAME}.${POD_NAMESPACE}.svc"
-log "$my_hostname $POD_NAMESPACE $service_name"
+function get_governing_service_name {
+    local my_hostname=$(hostname)
+    log "Bootstrapping MongoDB replica set arbiter member: $my_hostname"
+    service_name="${my_hostname}.${GOVERNING_SERVICE_NAME}.${POD_NAMESPACE}.svc"
+    log "$my_hostname $POD_NAMESPACE $service_name"
+}
+get_governing_service_name
 
 function get_peers {
     local HOSTS=$(echo "$1" | tr "/" "\n")
     # convert to an array
     local pods=($HOSTS)
-    # first index contains the string "replicaset". removing it
+    # first index contains replicaset name. remove it
     unset pods[0]
     # pods are comma separated. make it an array.
-    HOSTS=$(echo "${pods[@]}" | tr "," "\n")
+    local HOSTS=$(echo "${pods[@]}" | tr "," "\n")
     peers=($HOSTS)
 }
-get_peers "$REPLICASET_HOSTS"
+
+if [[ "$SHARDING" == 'enabled' ]]; then
+    log "running shard"
+    get_peers $SHARD_DSN
+else get_peers "$REPLICASET_HOSTS"
+fi
 
 # set the cert files as ssl_args
 if [[ ${SSL_MODE} != "disabled" ]]; then
