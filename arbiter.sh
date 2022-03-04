@@ -48,10 +48,12 @@ function get_peers {
     peers=($HOSTS)
 }
 
-if [[ "$SHARDING" == 'enabled' ]]; then
-    log "running shard"
-    get_peers $SHARD_DSN
-else get_peers "$REPLICASET_HOSTS"
+if [[ "$SHARD_TOPOLOGY_TYPE" == 'shard' ]]; then
+    log "finding peers for shard"
+    get_peers "$SHARD_DSN"
+else
+    log "finding peers for replicaset"
+    get_peers "$REPLICASET_DSN"
 fi
 
 # set the cert files as ssl_args
