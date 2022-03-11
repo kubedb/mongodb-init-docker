@@ -82,7 +82,7 @@ log "Initialized."
 sleep $DEFAULT_WAIT_SECS
 
 # myState : 1 - Primary, 2 - Secondary, 7 - Arbiter
-if [[ $(mongo admin "$ipv6" --host localhost --quiet --eval "rs.status().myState") == '7' ]]; then
+if [[ $(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '7' ]]; then
     log "($service_name) is already added as arbiter in replicaset"
     log "Good bye."
     exit 0
