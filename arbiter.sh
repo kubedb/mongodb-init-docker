@@ -37,6 +37,9 @@ function get_governing_service_name {
 }
 get_governing_service_name
 
+domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
+service_name=${service_name//svc/$domain} # replace svc with $domain.
+
 function get_peers {
     local HOSTS=$(echo "$1" | tr "/" "\n")
     # convert to an array
@@ -80,6 +83,7 @@ done
 
 log "Initialized."
 sleep $DEFAULT_WAIT_SECS
+sleep 30
 
 # myState : 1 - Primary, 2 - Secondary, 7 - Arbiter
 if [[ $(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '7' ]]; then

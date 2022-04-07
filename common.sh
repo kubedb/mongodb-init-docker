@@ -43,6 +43,9 @@ retry() {
             sleep $delay
         elif echo $out | jq -r '.errmsg' | grep "Host not found"; then
             sleep $delay
+        elif echo $out | grep "connection attempt failed: SocketException: stream truncated"; then
+        # To handle ReconfigureTLS-situation like, current-pod has tls configured, but other peers dont
+            return 0
         elif echo $out | grep "SocketException"; then
         # SocketException occurs in 3 commands[rs.add(), rs.addArb(), isMaster()] & 2 variation['connection attempt failed', 'host not found'] mainly.
             sleep $delay
