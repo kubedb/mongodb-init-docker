@@ -20,7 +20,7 @@ source /init-scripts/common.sh
 replica_set="$REPLICA_SET"
 script_name=${0##*/}
 
-sleep $DEFAULT_WAIT_SECS
+sleep "$DEFAULT_WAIT_SECS"
 
 if [[ "$AUTH" == "true" ]]; then
     admin_user="$MONGO_INITDB_ROOT_USERNAME"
@@ -30,15 +30,11 @@ if [[ "$AUTH" == "true" ]]; then
 fi
 
 function get_governing_service_name {
-    local my_hostname=$(hostname)
+    local my_hostname=$(uname -n)
     log "Bootstrapping MongoDB replica set arbiter member: $my_hostname"
     service_name="${my_hostname}.${GOVERNING_SERVICE_NAME}.${POD_NAMESPACE}.svc"
-    log "$my_hostname $POD_NAMESPACE $service_name"
 }
 get_governing_service_name
-
-domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
-service_name=${service_name//svc/$domain} # replace svc with $domain.
 
 function get_peers {
     local HOSTS=$(echo "$1" | tr "/" "\n")
@@ -73,7 +69,21 @@ if [[ ${SSL_MODE} != "disabled" ]]; then
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem" --keyFile=/data/configdb/key.txt)
 fi
 
+function removeSelf() {
+    for peer in "${peers[@]}"; do
+      if [[ $peer == *"$service_name"* ]];then # finding myself
+        remove=$peer
+      fi
+    done
+    peers=(${peers[@]/$remove})
+}
+removeSelf
 log "Peers: ${peers[*]}"
+
+domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
+service_name=${service_name//svc/$domain} # replace svc with $domain.
+log "Arbiter service name: $service_name"
+
 
 log "Waiting for this arbiter & all peers to be ready..."
 retry mongo "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"
@@ -82,8 +92,18 @@ for peer in "${peers[@]}"; do
 done
 
 log "Initialized."
-sleep $DEFAULT_WAIT_SECS
-sleep 30
+sleep "$DEFAULT_WAIT_SECS"
+
+
+
+
+rsStatus=$(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status()")
+# no need to retry for the first time
+if [ "$(echo "$rsStatus" | jq -r '.ok')" == "0" ] && [ "$(echo "$rsStatus" | jq -r '.codeName')" == "NotYetInitialized" ]; then
+  log "Not added to any replicaSet yet"
+else
+  retry mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState"
+fi
 
 # myState : 1 - Primary, 2 - Secondary, 7 - Arbiter
 if [[ $(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '7' ]]; then
@@ -105,7 +125,7 @@ for peer in "${peers[@]}"; do
         log "Adding myself ($service_name) as arbiter to replica set..."
         retry mongo admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.addArb('$service_name'))"
 
-        sleep $DEFAULT_WAIT_SECS
+        sleep "$DEFAULT_WAIT_SECS"
 
         log 'Waiting for replica to reach ARBITER state...'
         until printf '.' && [[ $(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '7' ]]; do
