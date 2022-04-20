@@ -71,11 +71,11 @@ fi
 
 function removeSelf() {
     for peer in "${peers[@]}"; do
-      if [[ $peer == *"$service_name"* ]];then # finding myself
-        remove=$peer
-      fi
+        if [[ $peer == *"$service_name"* ]]; then # finding myself
+            remove=$peer
+        fi
     done
-    peers=(${peers[@]/$remove})
+    peers=(${peers[@]/$remove/})
 }
 removeSelf
 log "Peers: ${peers[*]}"
@@ -83,7 +83,6 @@ log "Peers: ${peers[*]}"
 domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
 service_name=${service_name//svc/$domain} # replace svc with $domain.
 log "Arbiter service name: $service_name"
-
 
 log "Waiting for this arbiter & all peers to be ready..."
 retry mongo "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"
@@ -94,15 +93,12 @@ done
 log "Initialized."
 sleep "$DEFAULT_WAIT_SECS"
 
-
-
-
 rsStatus=$(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status()")
 # no need to retry for the first time
 if [ "$(echo "$rsStatus" | jq -r '.ok')" == "0" ] && [ "$(echo "$rsStatus" | jq -r '.codeName')" == "NotYetInitialized" ]; then
-  log "Not added to any replicaSet yet"
+    log "Not added to any replicaSet yet"
 else
-  retry mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState"
+    retry mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState"
 fi
 
 # myState : 1 - Primary, 2 - Secondary, 7 - Arbiter
