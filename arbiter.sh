@@ -65,8 +65,8 @@ if [[ ${SSL_MODE} != "disabled" ]]; then
         exit 1
     fi
 
-    ssl_args=(--tls --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem")
-    auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem" --keyFile=/data/configdb/key.txt)
+    ssl_args=(--ssl --sslCAFile "$ca_crt" --sslPEMKeyFile "$pem")
+    auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --sslCAFile "$ca_crt" --sslPEMKeyFile "$pem" --keyFile=/data/configdb/key.txt)
 fi
 
 function removeSelf() {
