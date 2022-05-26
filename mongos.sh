@@ -99,7 +99,7 @@ if [[ $(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}
 fi
 
 mongo "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.enableSharding('kubedb-system');"
-mongo kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db['health-check'].ensureIndex({'id': 1});"
+mongo kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db['health-check'].createIndex({'id': 1});"
 mongo "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.shardCollection('kubedb-system.health-check', {'id': 1});"
 
 # Initialize Part for KubeDB. ref: https://github.com/docker-library/mongo/blob/a499e81e743b05a5237e2fd700c0284b17d3d416/3.4/docker-entrypoint.sh#L302
