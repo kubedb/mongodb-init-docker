@@ -32,6 +32,7 @@ RUN apk add --no-cache openssl gettext
 COPY install.sh /scripts/install.sh
 COPY replicaset.sh /scripts/replicaset.sh
 COPY arbiter.sh /scripts/arbiter.sh
+COPY hidden.sh /scripts/hidden.sh
 COPY configdb.sh /scripts/configdb.sh
 COPY sharding.sh /scripts/sharding.sh
 COPY mongos.sh /scripts/mongos.sh
@@ -41,6 +42,7 @@ COPY --from=builder peer-finder /scripts/peer-finder
 RUN chmod -c 755 /scripts/peer-finder \
  /scripts/install.sh \
  /scripts/arbiter.sh \
+ /scripts/hidden.sh \
  /scripts/replicaset.sh \
  /scripts/configdb.sh \
  /scripts/sharding.sh \
