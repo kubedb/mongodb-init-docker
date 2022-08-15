@@ -49,10 +49,10 @@ function get_peers {
 
 if [[ "$SHARD_TOPOLOGY_TYPE" == 'shard' ]]; then
     log "finding peers for shard"
-    get_peers "$SHARD_DSN"
+    get_peers "$SHARD_DSN_ONLY_CORE"
 else
     log "finding peers for replicaset"
-    get_peers "$REPLICASET_DSN"
+    get_peers "$REPLICASET_DSN_ONLY_CORE"
 fi
 
 # set the cert files as ssl_args
@@ -69,15 +69,6 @@ if [[ ${SSL_MODE} != "disabled" ]]; then
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsCertificateKeyFile "$pem" --keyFile=/data/configdb/key.txt)
 fi
 
-function removeSelf() {
-    for peer in "${peers[@]}"; do
-        if [[ $peer == *"$service_name"* ]]; then # finding myself
-            remove=$peer
-        fi
-    done
-    peers=(${peers[@]/$remove/})
-}
-removeSelf
 log "Peers: ${peers[*]}"
 
 domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
