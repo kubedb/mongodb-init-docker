@@ -85,15 +85,9 @@ log "Initialized."
 sleep "$DEFAULT_WAIT_SECS"
 
 function checkHidden() {
-    mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.conf()" >conf.json
-    # the output of the above command is not a valid json.  The for loop below will do so.
-    for var in "NumberLong" "ObjectId"; do
-        sed -i -e "/$var/s/[)]//" -e "/$var/s/${var}[(]//" conf.json
-    done
+    conf=$(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.conf())")
 
-    # We only need the `host` & `hidden` field from `members` array
-    readarray -t my_array < <(jq -c '.members[]' conf.json)
-    for item in "${my_array[@]}"; do
+    for item in $(echo "$conf" | jq -c '.members[]'); do
         host=$(jq '.host' <<<"$item")
         hidden=$(jq '.hidden' <<<"$item")
 
@@ -104,7 +98,6 @@ function checkHidden() {
             is_hidden=$hidden # This value will be used in the `until` loop
         fi
     done
-    rm conf.json
 }
 
 rsStatus=$(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status()")
