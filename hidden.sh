@@ -31,7 +31,7 @@ fi
 
 function get_governing_service_name {
     local my_hostname=$(uname -n)
-    log "Bootstrapping MongoDB replica set arbiter member: $my_hostname"
+    log "Bootstrapping MongoDB replica set Hidden member: $my_hostname"
     service_name="${my_hostname}.${GOVERNING_SERVICE_NAME}.${POD_NAMESPACE}.svc"
 }
 get_governing_service_name
@@ -73,9 +73,9 @@ log "Peers: ${peers[*]}"
 
 domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
 service_name=${service_name//svc/$domain} # replace svc with $domain.
-log "Arbiter service name: $service_name"
+log "Hidden service name: $service_name"
 
-log "Waiting for this arbiter & all peers to be ready..."
+log "Waiting for this Hidden & all peers to be ready..."
 retry mongo "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"
 for peer in "${peers[@]}"; do
     retry mongo admin "$ipv6" --host "$peer" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
@@ -84,17 +84,37 @@ done
 log "Initialized."
 sleep "$DEFAULT_WAIT_SECS"
 
-rsStatus=$(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status()")
+function checkHidden() {
+    conf=$(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.conf())")
+
+    for item in $(echo "$conf" | jq -c '.members[]'); do
+        host=$(jq '.host' <<<"$item")
+        hidden=$(jq '.hidden' <<<"$item")
+
+        host=$(echo "$host" | sed -e 's/^"//' -e 's/"$//') # remove the quotation marks from the start & end
+        host=${host//[:][0-9]*/}                           # remove the :port, if it exists
+
+        if [[ "$host" == "$service_name" ]]; then
+            is_hidden=$hidden # This value will be used in the `until` loop
+        fi
+    done
+}
+
+rsStatus=$(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status()")
 # no need to retry for the first time
 if [ "$(echo "$rsStatus" | jq -r '.ok')" == "0" ] && [ "$(echo "$rsStatus" | jq -r '.codeName')" == "NotYetInitialized" ]; then
     log "Not added to any replicaSet yet"
 else
-    retry mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState"
+    retry mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState"
 fi
 
 # myState : 1 - Primary, 2 - Secondary, 7 - Arbiter
-if [[ $(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '7' ]]; then
-    log "($service_name) is already added as arbiter in replicaset"
+if [[ $(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; then
+    until printf '.' && [[ $is_hidden == true ]]; do
+        checkHidden
+        sleep 1
+    done
+    log "($service_name) is already as a Hidden member in the replicaset"
     log "Good bye."
     exit 0
 fi
@@ -109,17 +129,18 @@ for peer in "${peers[@]}"; do
         log "Found master: $peer"
 
         # Retrying command until successful
-        log "Adding myself ($service_name) as arbiter to replica set..."
-        retry mongo admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.addArb('$service_name'))"
+        log "Adding myself ($service_name) as Hidden to replica set..."
+        retry mongo admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.add({ host: '$service_name', hidden: true, priority: 0 }))"
 
         sleep "$DEFAULT_WAIT_SECS"
 
-        log 'Waiting for replica to reach ARBITER state...'
-        until printf '.' && [[ $(mongo admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '7' ]]; do
+        log 'Waiting for replica to reach Hidden state...'
+        until printf '.' && [[ $is_hidden == true ]]; do
+            checkHidden
             sleep 1
         done
 
-        log '✓ Replica reached ARBITER state.'
+        log '✓ Replica reached Hidden state.'
         log "Good bye."
         exit 0
     fi
