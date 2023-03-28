@@ -36,16 +36,6 @@ if [[ "$AUTH" == "true" ]]; then
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --keyFile=/data/configdb/key.txt)
 fi
 
-function shutdown_mongo() {
-    if [[ $# -eq 1 ]]; then
-        args="timeoutSecs: $1"
-    else
-        args='force: true'
-    fi
-    log "Shutting down mongos ($args)..."
-    mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.shutdownServer({$args})"
-}
-
 # set the cert files as ssl_args
 if [[ ${SSL_MODE} != "disabled" ]]; then
     ca_crt=/var/run/mongodb/tls/ca.crt
@@ -59,25 +49,28 @@ if [[ ${SSL_MODE} != "disabled" ]]; then
     auth_args=(--clusterAuthMode ${CLUSTER_AUTH_MODE} --sslMode ${SSL_MODE} --tlsCAFile "$ca_crt" --tlsPEMKeyFile "$pem" --keyFile=/data/configdb/key.txt)
 fi
 
+init
 log "Ping Config Server replicaset : $CONFIGDB_REPSET"
 until mongo --quiet "$ipv6" --host "$CONFIGDB_REPSET" "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.adminCommand('ping')"; do
     sleep 1
     log "Ping to Config Server replicaset fails."
+    exitScript
 done
 
+init
 log "Check if Config Server primary node is UP!!"
 until [[ $(mongo --quiet "$ipv6" --host "$CONFIGDB_REPSET" "${admin_creds[@]}" "${ssl_args[@]}" --eval "rs.status().hasOwnProperty('myState') && rs.status().myState==1;" | tail -1) == true ]]; do
     log "Primary Node of Config Server replicaset is not up"
     sleep 1
+    exitScript
 done
 
-log "Starting a mongos instance..."
-mongos --config /data/configdb/mongod.conf --configdb="$CONFIGDB_REPSET" --port=27017 "${auth_args[@]}" "$ipv6" --bind_ip_all | tee -a /work-dir/log.txt &
-
+init
 log "Waiting for mongos to be ready..."
 until mongo "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"; do
     log "Retrying..."
     sleep 2
+    exitScript
 done
 
 log "Add shard instances"
@@ -137,5 +130,4 @@ if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
     mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"${INJECT_USER}\",roles:[{role: 'root', db: 'admin'}],})"
 fi
 
-shutdown_mongo
 log "Good bye."

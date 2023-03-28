@@ -18,12 +18,24 @@
 
 DEFAULT_WAIT_SECS=5
 script_name=${0##*/}
-
+count=0
 log() {
     local msg="$1"
     local timestamp
     timestamp=$(date --iso-8601=ns)
     echo "[$timestamp] [$script_name] $msg" | tee -a /work-dir/log.txt
+}
+
+init() {
+    count=0
+}
+
+exitScript() {
+    total=10
+    count=$((count + 1))
+    if [ "$count" -ge "$total" ]; then
+        exit 1
+    fi
 }
 
 retry() {
