@@ -76,16 +76,16 @@ service_name=${service_name//svc/$domain} # replace svc with $domain.
 log "Hidden service name: $service_name"
 
 log "Waiting for this Hidden & all peers to be ready..."
-retry mongo "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"
+retry mongosh "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"
 for peer in "${peers[@]}"; do
-    retry mongo admin "$ipv6" --host "$peer" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
+    retry mongosh admin "$ipv6" --host "$peer" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
 done
 
 log "Initialized."
 sleep "$DEFAULT_WAIT_SECS"
 
 function checkHidden() {
-    conf=$(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.conf())")
+    conf=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.conf())")
 
     for item in $(echo "$conf" | jq -c '.members[]'); do
         host=$(jq '.host' <<<"$item")
@@ -100,16 +100,16 @@ function checkHidden() {
     done
 }
 
-rsStatus=$(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status()")
+rsStatus=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status()")
 # no need to retry for the first time
 if [ "$(echo "$rsStatus" | jq -r '.ok')" == "0" ] && [ "$(echo "$rsStatus" | jq -r '.codeName')" == "NotYetInitialized" ]; then
     log "Not added to any replicaSet yet"
 else
-    retry mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState"
+    retry mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState"
 fi
 
 # myState : 1 - Primary, 2 - Secondary, 7 - Arbiter
-if [[ $(mongo admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; then
+if [[ $(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState") == '2' ]]; then
     until printf '.' && [[ $is_hidden == true ]]; do
         checkHidden
         sleep 1
@@ -122,15 +122,15 @@ fi
 # try to find a master and add yourself to its replica set.
 for peer in "${peers[@]}"; do
     # re-check rs.isMaster() on the peer to see it is ready
-    retry mongo admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
-    out=$(mongo admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())")
+    retry mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
+    out=$(mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())")
     log "$out"
     if echo "$out" | jq -r '.ismaster' | grep 'true'; then
         log "Found master: $peer"
 
         # Retrying command until successful
         log "Adding myself ($service_name) as Hidden to replica set..."
-        retry mongo admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.add({ host: '$service_name', hidden: true, priority: 0 }))"
+        retry mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.add({ host: '$service_name', hidden: true, priority: 0 }))"
 
         sleep "$DEFAULT_WAIT_SECS"
 
