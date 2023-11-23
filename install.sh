@@ -49,7 +49,6 @@ if [[ "$SSL_MODE" != "disabled" ]] && [[ -f "$client_pem" ]]; then
     envsubst '${INJECT_USER}' <${INIT_DIR}/replicaset.sh >${DEST_DIR}/replicaset.sh
     envsubst '${INJECT_USER}' <${INIT_DIR}/sharding.sh >${DEST_DIR}/sharding.sh
     envsubst '${INJECT_USER}' <${INIT_DIR}/mongos.sh >${DEST_DIR}/mongos.sh
-    rm ${INIT_DIR}/replicaset.sh ${INIT_DIR}/mongos.sh ${INIT_DIR}/sharding.sh
     chmod -c 755 ${DEST_DIR}/replicaset.sh ${DEST_DIR}/sharding.sh ${DEST_DIR}/mongos.sh
 fi
 
@@ -69,6 +68,5 @@ fi
 
 if [ -f "/keydir-readonly/key.txt" ]; then
     cp /keydir-readonly/key.txt /data/configdb/key.txt
-    chmod 600 /data/configdb/key.txt
-    chown -R 1001:0 /data/configdb/key.txt
+     chmod 400 /data/configdb/key.txt
 fi
