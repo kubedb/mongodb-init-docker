@@ -49,12 +49,29 @@ if [[ "$SSL_MODE" != "disabled" ]] && [[ -f "$client_pem" ]]; then
     envsubst '${INJECT_USER}' <${INIT_DIR}/replicaset.sh >${DEST_DIR}/replicaset.sh
     envsubst '${INJECT_USER}' <${INIT_DIR}/sharding.sh >${DEST_DIR}/sharding.sh
     envsubst '${INJECT_USER}' <${INIT_DIR}/mongos.sh >${DEST_DIR}/mongos.sh
+
+    ls -l ${INIT_DIR}
+    echo "----"
+    ls -l ${DEST_DIR}
+    rm ${INIT_DIR}/replicaset.sh ${INIT_DIR}/mongos.sh ${INIT_DIR}/sharding.sh
     chmod -c 755 ${DEST_DIR}/replicaset.sh ${DEST_DIR}/sharding.sh ${DEST_DIR}/mongos.sh
+fi
+
+if [[ -d ${INIT_DIR} ]]; then
+  echo "init dir"
+fi
+
+if [[ -d ${DEST_DIR} ]]; then
+  echo "dest dir"
 fi
 
 if [[ -d ${INIT_DIR} ]] && [[ -d ${DEST_DIR} ]]; then
     cp -a ${INIT_DIR}/* ${DEST_DIR}
 fi
+
+echo "after if"
+ls -l ${DEST_DIR}
+
 
 if [ -f "/configdb-readonly/mongod.conf" ]; then
     cp /configdb-readonly/mongod.conf /data/configdb/mongod.conf
