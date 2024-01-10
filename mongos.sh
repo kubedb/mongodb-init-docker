@@ -127,15 +127,15 @@ if [[ $(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@
     log "Done."
 fi
 
-if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
-    #xref: https://docs.mongodb.com/manual/tutorial/configure-x509-client-authentication/#procedures
-    log "Creating root user ${INJECT_USER} for SSL..."
-    out=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({usersInfo: \"${INJECT_USER}\"})")
-    if echo "$out" | grep '${INJECT_USER}'; then
-        log "root user ${INJECT_USER} Already exists..."
-    else
-        mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"${INJECT_USER}\",roles:[{role: 'root', db: 'admin'}],})"
-    fi
-fi
+#if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
+#    #xref: https://docs.mongodb.com/manual/tutorial/configure-x509-client-authentication/#procedures
+#    log "Creating root user ${INJECT_USER} for SSL..."
+#    out=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({usersInfo: \"${INJECT_USER}\"})")
+#    if echo "$out" | grep '${INJECT_USER}'; then
+#        log "root user ${INJECT_USER} Already exists..."
+#    else
+#        mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"${INJECT_USER}\",roles:[{role: 'root', db: 'admin'}],})"
+#    fi
+#fi
 
 log "Good bye."
