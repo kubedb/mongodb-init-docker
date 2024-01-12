@@ -29,6 +29,9 @@ FROM alpine:latest
 
 RUN apk add --no-cache openssl gettext
 
+RUN delgroup ping
+RUN adduser -u 999 -g 999 -D mongo
+
 COPY install.sh /scripts/install.sh
 COPY replicaset.sh /scripts/replicaset.sh
 COPY arbiter.sh /scripts/arbiter.sh
@@ -38,6 +41,8 @@ COPY sharding.sh /scripts/sharding.sh
 COPY mongos.sh /scripts/mongos.sh
 COPY common.sh /scripts/common.sh
 COPY --from=builder peer-finder /scripts/peer-finder
+
+RUN chown -R mongo /scripts
 
 RUN chmod -c 755 /scripts/peer-finder \
  /scripts/install.sh \
