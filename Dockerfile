@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM debian:bookworm as builder
+FROM debian:12 as builder
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG PEER_FINDER_VERSION=v1.0.2
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
@@ -22,8 +26,12 @@ RUN set -x \
   && apt-get install -y --no-install-recommends apt-transport-https ca-certificates curl unzip
 
 RUN set -x                                                                                             \
-  && curl -fsSL -o peer-finder https://github.com/kmodules/peer-finder/releases/download/v1.0.1-ac/peer-finder \
+  && curl -fsSL -o peer-finder.tar.gz https://github.com/kmodules/peer-finder/releases/download/${PEER_FINDER_VERSION}/peer-finder-${TARGETOS}-${TARGETARCH}.tar.gz \
+  && tar -xzvf peer-finder.tar.gz \
+  && mv peer-finder-${TARGETOS}-${TARGETARCH} peer-finder \
   && chmod 755 peer-finder
+
+
 
 FROM alpine:latest
 
