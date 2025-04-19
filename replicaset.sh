@@ -41,6 +41,33 @@ while read -ra line; do
     peers=("${peers[@]}" "$line")
 done
 
+# GATEWAY_HOSTNAME=abc:123,def:456,xyz:789
+# my_hostname=demo-mg2-2
+if [[ -n "${GATEWAY_HOSTNAME-}" ]]; then
+  index="${my_hostname##*-}" # pull the index out (everything after the last dash)
+  log "index = $index & gw = ${GATEWAY_HOSTNAME}"
+
+  # sanity‑check: index should be non‑negative integer
+  if ! [[ "$index" =~ ^[0-9]+$ ]]; then
+    log "Unable to parse index from hostname '$my_hostname'" >&2
+    exit 1
+  fi
+
+  # split the comma‑separated list into a bash array
+  IFS=',' read -r -a gateways <<< "$GATEWAY_HOSTNAME"
+
+  # ensure the index exists
+  if (( index < ${#gateways[@]} )); then
+    service_name="${gateways[index]}"
+    log "→ service_name set to '$service_name'"
+  else
+    log "Index $index out of range (only ${#gateways[@]} entries in GATEWAY_HOSTNAME)" >&2
+    exit 1
+  fi
+fi
+
+log "xxxxxxxxxxxxxxxxxxxxxxxxxxx $service_name"
+
 # set the cert files as ssl_args
 if [[ ${SSL_MODE} != "disabled" ]]; then
     ca_crt=/var/run/mongodb/tls/ca.crt
