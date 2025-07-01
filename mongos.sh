@@ -77,7 +77,11 @@ done
 log "Add shard instances"
 total=${#SHARD_REPSETS_LIST[*]}
 
-retry mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "db.adminCommand({'setDefaultRWConcern' : 1,'defaultWriteConcern' : {'w' : 'majority'}})"
+if [ -n "$ipv6" ]; then
+    retry retry mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "db.adminCommand({'setDefaultRWConcern' : 1,'defaultWriteConcern' : {'w' : 'majority'}})"
+else
+    retry retry mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "db.adminCommand({'setDefaultRWConcern' : 1,'defaultWriteConcern' : {'w' : 'majority'}})"
+fi
 
 log 'Shard list $total: ${SHARD_REPSETS_LIST[*]}'
 
@@ -88,9 +92,16 @@ for ((i = 0; i < $total; i++)); do
 done
 
 log "Ensure admin user credentials"
-if [[ $(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.system.users.find({user:'$admin_user'}).count()" | tail -1) == 0 ]]; then
-    log "Creating admin user..."
-    mongosh admin "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
+if [ -n "$ipv6" ]; then
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.system.users.find({user:'$admin_user'}).count()" --ipv6 | tail -1) == 0 ]]; then
+        log "Creating admin user..."
+        mongosh admin --host localhost "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})" --ipv6
+    fi
+else
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.system.users.find({user:'$admin_user'}).count()" | tail -1) == 0 ]]; then
+        log "Creating admin user..."
+        mongosh admin --host localhost "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
+    fi
 fi
 
 mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.enableSharding('kubedb-system');"
@@ -99,11 +110,7 @@ mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh
 
 # Initialize Part for KubeDB. ref: https://github.com/docker-library/mongo/blob/a499e81e743b05a5237e2fd700c0284b17d3d416/3.4/docker-entrypoint.sh#L302
 # Start
-log "Ensure Initializing init scripts"
-if [[ $(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find({'_id' : 'kubedb','kubedb' : 'initialized'}).count()" | tail -1) == 0 ]] &&
-    [[ $(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.insert({'_id' : 'kubedb','kubedb' : 'initialized'});" |
-        grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
-
+process_init_files() {
     export MONGO_INITDB_DATABASE="${MONGO_INITDB_DATABASE:-test}"
     log "Initialize init scripts"
     echo
@@ -122,9 +129,20 @@ if [[ $(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@
         esac
         echo
     done
-    # END
-
     log "Done."
+}
+
+log "Ensure Initializing init scripts"
+if [ -n "$ipv6" ]; then
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" --ipv6 | tail -1) == 0 ]] &&
+       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" --ipv6 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+        process_init_files
+    fi
+else
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" | tail -1) == 0 ]] &&
+       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+        process_init_files
+    fi
 fi
 
 #if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
