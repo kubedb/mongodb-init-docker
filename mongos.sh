@@ -52,7 +52,7 @@ fi
 
 init
 log "Ping Config Server replicaset : $CONFIGDB_REPSET"
-until mongosh --quiet "$ipv6" --host "$CONFIGDB_REPSET" "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.adminCommand('ping')"; do
+until mongosh --quiet "$ipv6" --host "$CONFIGDB_REPSET" "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.adminCommand('ping')"; do
     sleep 1
     log "Ping to Config Server replicaset fails."
     exitScript
@@ -60,7 +60,7 @@ done
 
 init
 log "Check if Config Server primary node is UP!!"
-until [[ $(mongosh --quiet "$ipv6" --host "$CONFIGDB_REPSET" "${admin_creds[@]}" "${ssl_args[@]}" --eval "rs.status().hasOwnProperty('myState') && rs.status().myState==1;" | tail -1) == true ]]; do
+until [[ $(mongosh --quiet "$ipv6" --host "$CONFIGDB_REPSET" "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "rs.status().hasOwnProperty('myState') && rs.status().myState==1;" | tail -1) == true ]]; do
     log "Primary Node of Config Server replicaset is not up"
     sleep 1
     exitScript
@@ -68,7 +68,7 @@ done
 
 init
 log "Waiting for mongos to be ready..."
-until mongosh "$ipv6" --host localhost "${ssl_args[@]}" --eval "db.adminCommand('ping')"; do
+until mongosh "$ipv6" --host localhost "${ssl_args[@]}" --json --eval "db.adminCommand('ping')"; do
     log "Retrying..."
     sleep 2
     exitScript
@@ -78,9 +78,9 @@ log "Add shard instances"
 total=${#SHARD_REPSETS_LIST[*]}
 
 if [ -n "$ipv6" ]; then
-    retry retry mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "db.adminCommand({'setDefaultRWConcern' : 1,'defaultWriteConcern' : {'w' : 'majority'}})"
+    retry retry mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --json --eval "db.adminCommand({'setDefaultRWConcern' : 1,'defaultWriteConcern' : {'w' : 'majority'}})"
 else
-    retry retry mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "db.adminCommand({'setDefaultRWConcern' : 1,'defaultWriteConcern' : {'w' : 'majority'}})"
+    retry retry mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --json --eval "db.adminCommand({'setDefaultRWConcern' : 1,'defaultWriteConcern' : {'w' : 'majority'}})"
 fi
 
 log 'Shard list $total: ${SHARD_REPSETS_LIST[*]}'
@@ -88,25 +88,29 @@ log 'Shard list $total: ${SHARD_REPSETS_LIST[*]}'
 for ((i = 0; i < $total; i++)); do
     repSet=${SHARD_REPSETS_LIST[$i]}
     log "Add shard: $repSet"
-    mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.addShard('$repSet');"
+    mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.addShard('$repSet');"
 done
 
 log "Ensure admin user credentials"
 if [ -n "$ipv6" ]; then
-    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.system.users.find({user:'$admin_user'}).count()" --ipv6 | tail -1) == 0 ]]; then
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.system.users.find({user:'$admin_user'}).count()" --ipv6 | tail -1) == 0 ]]; then
         log "Creating admin user..."
-        mongosh admin --host localhost "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})" --ipv6
+        mongosh admin --host localhost "${ssl_args[@]}" --json --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})" --ipv6
     fi
 else
-    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.system.users.find({user:'$admin_user'}).count()" | tail -1) == 0 ]]; then
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.system.users.find({user:'$admin_user'}).count()" | tail -1) == 0 ]]; then
         log "Creating admin user..."
-        mongosh admin --host localhost "${ssl_args[@]}" --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
+        mongosh admin --host localhost "${ssl_args[@]}" --json --eval "db.createUser({user: '$admin_user', pwd: '$admin_password', roles: [{role: 'root', db: 'admin'}]})"
     fi
 fi
 
-mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.enableSharding('kubedb-system');"
-mongosh kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db['health-check'].createIndex({'id': 1});"
-mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "sh.shardCollection('kubedb-system.health-check', {'id': 1});"
+mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.enableSharding('kubedb-system');"
+if [ -n "$ipv6" ]; then
+        mongosh kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
+else
+        mongosh kubedb-system --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
+fi
+mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.shardCollection('kubedb-system.health-check', {'id': 1});"
 
 # Initialize Part for KubeDB. ref: https://github.com/docker-library/mongo/blob/a499e81e743b05a5237e2fd700c0284b17d3d416/3.4/docker-entrypoint.sh#L302
 # Start
@@ -134,13 +138,13 @@ process_init_files() {
 
 log "Ensure Initializing init scripts"
 if [ -n "$ipv6" ]; then
-    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" --ipv6 | tail -1) == 0 ]] &&
-       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" --ipv6 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" --ipv6 | tail -1) == 0 ]] &&
+       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" --ipv6 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
         process_init_files
     fi
 else
-    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" | tail -1) == 0 ]] &&
-       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+    if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" | tail -1) == 0 ]] &&
+       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
         process_init_files
     fi
 fi
@@ -148,11 +152,11 @@ fi
 #if [[ ${SSL_MODE} != "disabled" ]] && [[ -f "$client_pem" ]]; then
 #    #xref: https://docs.mongodb.com/manual/tutorial/configure-x509-client-authentication/#procedures
 #    log "Creating root user ${INJECT_USER} for SSL..."
-#    out=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({usersInfo: \"${INJECT_USER}\"})")
+#    out=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.getSiblingDB(\"\$external\").runCommand({usersInfo: \"${INJECT_USER}\"})")
 #    if echo "$out" | grep '${INJECT_USER}'; then
 #        log "root user ${INJECT_USER} Already exists..."
 #    else
-#        mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"${INJECT_USER}\",roles:[{role: 'root', db: 'admin'}],})"
+#        mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.getSiblingDB(\"\$external\").runCommand({createUser: \"${INJECT_USER}\",roles:[{role: 'root', db: 'admin'}],})"
 #    fi
 #fi
 
