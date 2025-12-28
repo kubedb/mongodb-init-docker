@@ -106,9 +106,9 @@ fi
 
 mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.enableSharding('kubedb-system');"
 if [ -n "$ipv6" ]; then
-        mongosh kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
+    mongosh kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
 else
-        mongosh kubedb-system --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
+    mongosh kubedb-system --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
 fi
 mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.shardCollection('kubedb-system.health-check', {'id': 1});"
 
@@ -139,12 +139,12 @@ process_init_files() {
 log "Ensure Initializing init scripts"
 if [ -n "$ipv6" ]; then
     if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" --ipv6 | tail -1) == 0 ]] &&
-       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" --ipv6 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+        [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" --ipv6 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
         process_init_files
     fi
 else
     if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" | tail -1) == 0 ]] &&
-       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+        [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
         process_init_files
     fi
 fi
