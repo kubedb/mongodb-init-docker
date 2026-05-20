@@ -14,7 +14,7 @@ jobs:
     steps:
 
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v1
+      uses: actions/checkout@50fbc622fc4ef5163becd7fab6573eac35f8462e # v1.2.0
 
     - name: Print version info
       id: semver
@@ -23,7 +23,7 @@ jobs:
 
     - name: Set up Docker Buildx
       id: buildx
-      uses: crazy-max/ghaction-docker-buildx@v1
+      uses: crazy-max/ghaction-docker-buildx@e01797ad2ea9a981005ad58c99afa8d842e3d3eb # v1.6.2
       with:
         version: latest
 
