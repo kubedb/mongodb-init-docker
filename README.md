@@ -1,2 +1,3 @@
-# mongodb-init-scripts-docker
-MongoDB Init Scripts Docker Image
+# mongodb-init-docker
+
+MongoDB Init Docker Image
