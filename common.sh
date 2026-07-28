@@ -47,6 +47,24 @@ exitScript() {
     fi
 }
 
+# mongosh renders the command status as `ok: 1`, `"ok":1` or, under --json,
+# `"ok": {"$numberInt": "1"}`. Print just the digit, empty when absent. Done in
+# bash because the community image (mongodb-community-server ubi9-slim) ships no
+# jq/grep/awk/sed, and a missing binary inside an `if` silently reads as false.
+okStatus() {
+    local text="${1//[[:space:]]/}"
+    text="${text//\"/}"
+    local re='(^|[,{])ok:\{\$number[A-Za-z]+:([0-9]+)\}'
+    if [[ "$text" =~ $re ]]; then
+        echo "${BASH_REMATCH[2]}"
+        return
+    fi
+    re='(^|[,{])ok:([0-9]+)'
+    if [[ "$text" =~ $re ]]; then
+        echo "${BASH_REMATCH[2]}"
+    fi
+}
+
 retry() {
     local delay=1
     local numberOfTry=300
@@ -54,23 +72,26 @@ retry() {
     while [[ $tryNo -le $numberOfTry ]]; do
         str_command="$*"
         log "Running command $str_command . . ."
-        out=$("$@")
+        # Capture stderr too: mongosh renders thrown errors (connection failures,
+        # command errors) to stderr, and some builds do not feed them through a
+        # pipe. Reading both streams keeps the classification below reliable.
+        out=$("$@" 2>&1)
         log "$out"
         tryNo=$((tryNo + 1))
 
-        if [ "$(echo $out | jq -r '.ok')" == "1" ]; then
+        if [[ "$(okStatus "$out")" == "1" ]]; then
             return 0
-        elif echo $out | jq -r '.errmsg' | grep "HostUnreachable"; then
+        elif [[ "$out" == *"HostUnreachable"* ]]; then
             sleep $delay
-        elif echo $out | jq -r '.errmsg' | grep "Host not found"; then
+        elif [[ "$out" == *"Host not found"* ]]; then
             sleep $delay
-        elif echo $out | grep "connection attempt failed: SocketException: stream truncated"; then
+        elif [[ "$out" == *"connection attempt failed: SocketException: stream truncated"* ]]; then
             # To handle ReconfigureTLS-situation like, current-pod has tls configured, but other peers dont
             return 0
-        elif echo $out | grep "SocketException"; then
+        elif [[ "$out" == *"SocketException"* ]]; then
             # SocketException occurs in 3 commands[rs.add(), rs.addArb(), isMaster()] & 2 variation['connection attempt failed', 'host not found'] mainly.
             sleep $delay
-        elif [ "$(echo $out | jq -r '.ok')" == "0" ]; then
+        elif [[ "$(okStatus "$out")" == "0" ]]; then
             exit 1 # kill the container
         else
             return 0
