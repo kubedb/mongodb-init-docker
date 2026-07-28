@@ -16,6 +16,15 @@
 
 # ref: https://github.com/kubernetes/charts/blob/master/stable/mongodb-replicaset/init/on-start.sh
 
+# mongosh creates its config/history under $HOME on every run. The community
+# image (mongodb-community-server ubi9-slim) sets HOME=/data/db owned by uid
+# mongod, and mongos pods have no /data/db volume, so the pod's uid cannot write
+# it. mongosh then prints "Warning: Could not access file: EACCES ..." on
+# *stdout*, which corrupts every $(mongosh --quiet --eval ...) capture below.
+if [[ ! -w "${HOME:-/}" ]]; then
+    export HOME=/work-dir
+fi
+
 DEFAULT_WAIT_SECS=5
 script_name=${0##*/}
 count=0
