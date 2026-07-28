@@ -84,9 +84,11 @@ done
 log "Initialized."
 sleep "$DEFAULT_WAIT_SECS"
 
-rsStatus=$(mongosh admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status()")
+# rs.status() throws until the set is configured. Read its codeName from stdout
+# rather than parsing the rendered document: no jq in the community image.
+rsStatus=$(mongosh admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "try { var s = rs.status(); print(s.ok === 1 ? 'OK' : s.codeName) } catch (e) { print(e.codeName) }" | tail -1)
 # no need to retry for the first time
-if [ "$(echo "$rsStatus" | jq -r '.ok')" == "0" ] && [ "$(echo "$rsStatus" | jq -r '.codeName')" == "NotYetInitialized" ]; then
+if [[ "$rsStatus" == "NotYetInitialized" ]]; then
     log "Not added to any replicaSet yet"
 else
     retry mongosh admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "rs.status().myState"
@@ -103,9 +105,12 @@ fi
 for peer in "${peers[@]}"; do
     # re-check rs.isMaster() on the peer to see it is ready
     retry mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
-    out=$(mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())")
-    log "$out"
-    if echo "$out" | jq -r '.ismaster' | grep 'true'; then
+    # Ask mongosh for the scalar instead of parsing its JSON: the community image
+    # ships no jq/grep, and a missing binary inside an `if` silently reads as false,
+    # which made every peer look non-primary and each member initiate its own set.
+    out=$(mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "print(rs.isMaster().ismaster)" | tail -1)
+    log "isMaster($peer): $out"
+    if [[ "$out" == "true" ]]; then
         log "Found master: $peer"
 
         # Retrying command until successful
