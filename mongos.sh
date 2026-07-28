@@ -22,8 +22,18 @@ source /init-scripts/common.sh
 export CONFIGDB_REPSET=${CONFIGDB_REPSET:-}
 export SHARD_REPSETS=${SHARD_REPSETS:-}
 export SERVICE_NAME=${SERVICE_NAME:-}
-domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
-FULL_SVC="$SERVICE_NAME.$(awk -v s=search '{if($1 == s)print $2}' /etc/resolv.conf)"
+# Parse the resolv.conf `search` line without awk: the community image
+# (mongodb-community-server ubi9-slim) ships no awk, and under `set -e` a
+# failed awk aborts this postStart hook and crashloops mongos. field2 is the
+# pod's own domain, field3 is the cluster svc domain used to expand `svc` below.
+domain=""
+FULL_SVC="$SERVICE_NAME"
+while read -r rc_key rc_f2 rc_f3 _; do
+    if [[ "$rc_key" == "search" ]]; then
+        domain="$rc_f3"
+        FULL_SVC="$SERVICE_NAME.$rc_f2"
+    fi
+done < /etc/resolv.conf
 SHARD_REPSETS=${SHARD_REPSETS//svc/$domain} # replace svc with $domain. xref: https://stackoverflow.com/a/13210909/4628962
 SHARD_REPSETS_LIST=(${SHARD_REPSETS// / })  # make array that splits by space. https://stackoverflow.com/a/15400047/4628962
 

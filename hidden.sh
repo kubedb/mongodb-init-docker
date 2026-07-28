@@ -71,7 +71,12 @@ fi
 
 log "Peers: ${peers[*]}"
 
-domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
+# Parse resolv.conf without awk (absent on community ubi9-slim image; a failed
+# awk under `set -e` aborts this script). field3 is the cluster svc domain.
+domain=""
+while read -r rc_key _ rc_f3 _; do
+    [[ "$rc_key" == "search" ]] && domain="$rc_f3"
+done < /etc/resolv.conf
 service_name=${service_name//svc/$domain} # replace svc with $domain.
 log "Hidden service name: $service_name"
 
@@ -85,19 +90,17 @@ log "Initialized."
 sleep "$DEFAULT_WAIT_SECS"
 
 function checkHidden() {
-    conf=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.conf())")
+    # Emit one "host hidden" line per member from mongosh: the community image has
+    # no jq/sed to walk the JSON and strip its quoting.
+    conf=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.conf().members.forEach(m => print(m.host + ' ' + (m.hidden === true)))")
 
-    for item in $(echo "$conf" | jq -c '.members[]'); do
-        host=$(jq '.host' <<<"$item")
-        hidden=$(jq '.hidden' <<<"$item")
-
-        host=$(echo "$host" | sed -e 's/^"//' -e 's/"$//') # remove the quotation marks from the start & end
-        host=${host//[:][0-9]*/}                           # remove the :port, if it exists
+    while read -r host hidden; do
+        host=${host//[:][0-9]*/} # remove the :port, if it exists
 
         if [[ "$host" == "$service_name" ]]; then
             is_hidden=$hidden # This value will be used in the `until` loop
         fi
-    done
+    done <<<"$conf"
 }
 
 # rs.status() throws until the set is configured. Read its codeName from stdout

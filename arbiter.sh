@@ -71,7 +71,12 @@ fi
 
 log "Peers: ${peers[*]}"
 
-domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
+# Parse resolv.conf without awk (absent on community ubi9-slim image; a failed
+# awk under `set -e` aborts this script). field3 is the cluster svc domain.
+domain=""
+while read -r rc_key _ rc_f3 _; do
+    [[ "$rc_key" == "search" ]] && domain="$rc_f3"
+done < /etc/resolv.conf
 service_name=${service_name//svc/$domain} # replace svc with $domain.
 log "Arbiter service name: $service_name"
 
