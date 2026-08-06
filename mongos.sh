@@ -22,8 +22,18 @@ source /init-scripts/common.sh
 export CONFIGDB_REPSET=${CONFIGDB_REPSET:-}
 export SHARD_REPSETS=${SHARD_REPSETS:-}
 export SERVICE_NAME=${SERVICE_NAME:-}
-domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
-FULL_SVC="$SERVICE_NAME.$(awk -v s=search '{if($1 == s)print $2}' /etc/resolv.conf)"
+# Parse the resolv.conf `search` line without awk: the community image
+# (mongodb-community-server ubi9-slim) ships no awk, and under `set -e` a
+# failed awk aborts this postStart hook and crashloops mongos. field2 is the
+# pod's own domain, field3 is the cluster svc domain used to expand `svc` below.
+domain=""
+FULL_SVC="$SERVICE_NAME"
+while read -r rc_key rc_f2 rc_f3 _; do
+    if [[ "$rc_key" == "search" ]]; then
+        domain="$rc_f3"
+        FULL_SVC="$SERVICE_NAME.$rc_f2"
+    fi
+done < /etc/resolv.conf
 SHARD_REPSETS=${SHARD_REPSETS//svc/$domain} # replace svc with $domain. xref: https://stackoverflow.com/a/13210909/4628962
 SHARD_REPSETS_LIST=(${SHARD_REPSETS// / })  # make array that splits by space. https://stackoverflow.com/a/15400047/4628962
 
@@ -85,10 +95,26 @@ fi
 
 log 'Shard list $total: ${SHARD_REPSETS_LIST[*]}'
 
+# This script runs as a postStart hook and re-runs on every container restart, so the
+# sharding setup below must be idempotent. mongosh 2.6+ exits non-zero when a helper
+# throws on an already-done condition (e.g. shard already added); under `set -e` that
+# would fail the hook and kill the container. Capture stderr as well as stdout, since
+# mongosh renders throws to stderr and the hook only redirects stdout to the container
+# log -- without this a genuine failure is reported as a bare non-zero exit.
+runIdempotent() {
+    local desc="$1"
+    shift
+    local out
+    if out=$("$@" 2>&1); then
+        log "$desc: $out"
+    else
+        log "$desc failed, continuing: $out"
+    fi
+}
+
 for ((i = 0; i < $total; i++)); do
     repSet=${SHARD_REPSETS_LIST[$i]}
-    log "Add shard: $repSet"
-    mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.addShard('$repSet');"
+    runIdempotent "add shard $repSet" mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.addShard('$repSet');"
 done
 
 log "Ensure admin user credentials"
@@ -104,13 +130,13 @@ else
     fi
 fi
 
-mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.enableSharding('kubedb-system');"
+runIdempotent "enableSharding(kubedb-system)" mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.enableSharding('kubedb-system');"
 if [ -n "$ipv6" ]; then
-        mongosh kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
+        runIdempotent "createIndex(health-check)" mongosh kubedb-system "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
 else
-        mongosh kubedb-system --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
+        runIdempotent "createIndex(health-check)" mongosh kubedb-system --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db['health-check'].createIndex({'id': 1});"
 fi
-mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.shardCollection('kubedb-system.health-check', {'id': 1});"
+runIdempotent "shardCollection(kubedb-system.health-check)" mongosh "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "sh.shardCollection('kubedb-system.health-check', {'id': 1});"
 
 # Initialize Part for KubeDB. ref: https://github.com/docker-library/mongo/blob/a499e81e743b05a5237e2fd700c0284b17d3d416/3.4/docker-entrypoint.sh#L302
 # Start
@@ -139,12 +165,12 @@ process_init_files() {
 log "Ensure Initializing init scripts"
 if [ -n "$ipv6" ]; then
     if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" --ipv6 | tail -1) == 0 ]] &&
-       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" --ipv6 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --ipv6 --quiet --eval "try { db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'}); print('INSERTED') } catch (e) { print(e.code) }") != "11000" ]]; then
         process_init_files
     fi
 else
     if [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.find({'_id': 'kubedb', 'kubedb': 'initialized'}).count()" | tail -1) == 0 ]] &&
-       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --json --eval "db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'})" 2>&1 | grep -c "E11000 duplicate key error collection: admin.kubedb") -eq 0 ]]; then
+       [[ $(mongosh admin --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "try { db.kubedb.insertOne({'_id': 'kubedb', 'kubedb': 'initialized'}); print('INSERTED') } catch (e) { print(e.code) }") != "11000" ]]; then
         process_init_files
     fi
 fi

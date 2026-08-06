@@ -86,9 +86,12 @@ fi
 for peer in "${peers[@]}"; do
     # re-check rs.isMaster() on the peer to see it is ready
     retry mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
-    out=$(mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())")
-    log "$out"
-    if echo "$out" | jq -r '.ismaster' | grep 'true'; then
+    # Ask mongosh for the scalar instead of parsing its JSON: the community image
+    # ships no jq/grep, and a missing binary inside an `if` silently reads as false,
+    # which made every peer look non-primary and each member initiate its own set.
+    out=$(mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "print(rs.isMaster().ismaster)" | tail -1)
+    log "isMaster($peer): $out"
+    if [[ "$out" == "true" ]]; then
         log "Found master: $peer"
 
         # Retrying command until successful
@@ -110,7 +113,10 @@ for peer in "${peers[@]}"; do
 done
 
 # else initiate a replica set with yourself.
-if mongosh admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.status())" 2>&1 1>/dev/null | grep "no replset config has been received"; then
+# rs.status() throws until the set is configured. Read its codeName from stdout
+# via command substitution instead of grepping stderr: mongosh 2.6+ does not render
+# the thrown error to the piped stream, which silently skipped initiation.
+if [[ $(mongosh admin "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "try { var s = rs.status(); print(s.ok === 1 ? 'OK' : s.codeName) } catch (e) { print(e.codeName) }") == "NotYetInitialized" ]]; then
     # Retrying command until successful
     log "Initiating a new replica set with myself ($service_name)..."
     retry mongosh "$ipv6" --host localhost "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.initiate({'_id': '$replica_set', 'writeConcernMajorityJournalDefault': false, 'members': [{'_id': 0, 'host': '$service_name'}]}))"

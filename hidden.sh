@@ -71,7 +71,12 @@ fi
 
 log "Peers: ${peers[*]}"
 
-domain=$(awk -v s=search '{if($1 == s)print $3}' /etc/resolv.conf)
+# Parse resolv.conf without awk (absent on community ubi9-slim image; a failed
+# awk under `set -e` aborts this script). field3 is the cluster svc domain.
+domain=""
+while read -r rc_key _ rc_f3 _; do
+    [[ "$rc_key" == "search" ]] && domain="$rc_f3"
+done < /etc/resolv.conf
 service_name=${service_name//svc/$domain} # replace svc with $domain.
 log "Hidden service name: $service_name"
 
@@ -85,24 +90,24 @@ log "Initialized."
 sleep "$DEFAULT_WAIT_SECS"
 
 function checkHidden() {
-    conf=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.conf())")
+    # Emit one "host hidden" line per member from mongosh: the community image has
+    # no jq/sed to walk the JSON and strip its quoting.
+    conf=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.conf().members.forEach(m => print(m.host + ' ' + (m.hidden === true)))")
 
-    for item in $(echo "$conf" | jq -c '.members[]'); do
-        host=$(jq '.host' <<<"$item")
-        hidden=$(jq '.hidden' <<<"$item")
-
-        host=$(echo "$host" | sed -e 's/^"//' -e 's/"$//') # remove the quotation marks from the start & end
-        host=${host//[:][0-9]*/}                           # remove the :port, if it exists
+    while read -r host hidden; do
+        host=${host//[:][0-9]*/} # remove the :port, if it exists
 
         if [[ "$host" == "$service_name" ]]; then
             is_hidden=$hidden # This value will be used in the `until` loop
         fi
-    done
+    done <<<"$conf"
 }
 
-rsStatus=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status()")
+# rs.status() throws until the set is configured. Read its codeName from stdout
+# rather than parsing the rendered document: no jq in the community image.
+rsStatus=$(mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "try { var s = rs.status(); print(s.ok === 1 ? 'OK' : s.codeName) } catch (e) { print(e.codeName) }" | tail -1)
 # no need to retry for the first time
-if [ "$(echo "$rsStatus" | jq -r '.ok')" == "0" ] && [ "$(echo "$rsStatus" | jq -r '.codeName')" == "NotYetInitialized" ]; then
+if [[ "$rsStatus" == "NotYetInitialized" ]]; then
     log "Not added to any replicaSet yet"
 else
     retry mongosh admin "$ipv6" --host localhost "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "rs.status().myState"
@@ -123,9 +128,12 @@ fi
 for peer in "${peers[@]}"; do
     # re-check rs.isMaster() on the peer to see it is ready
     retry mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())"
-    out=$(mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "JSON.stringify(rs.isMaster())")
-    log "$out"
-    if echo "$out" | jq -r '.ismaster' | grep 'true'; then
+    # Ask mongosh for the scalar instead of parsing its JSON: the community image
+    # ships no jq/grep, and a missing binary inside an `if` silently reads as false,
+    # which made every peer look non-primary and each member initiate its own set.
+    out=$(mongosh admin "$ipv6" --host "$peer" "${admin_creds[@]}" "${ssl_args[@]}" --quiet --eval "print(rs.isMaster().ismaster)" | tail -1)
+    log "isMaster($peer): $out"
+    if [[ "$out" == "true" ]]; then
         log "Found master: $peer"
 
         # Retrying command until successful
