@@ -3,7 +3,9 @@ SHELL=/bin/bash -o pipefail
 REGISTRY   ?= ghcr.io/kubedb
 BIN        ?= mongodb-init
 IMAGE      := $(REGISTRY)/$(BIN)
-TAG        ?= $(shell git describe --exact-match --abbrev=0 2>/dev/null || echo "")
+# --tags is required: actions/checkout re-fetches the triggering ref as a
+# lightweight tag, which plain `git describe` (annotated-only) never matches.
+TAG        ?= $(shell git describe --tags --exact-match --abbrev=0 2>/dev/null || echo "")
 
 DOCKER_PLATFORMS := linux/amd64 linux/arm64
 PLATFORM         ?= linux/$(subst x86_64,amd64,$(subst aarch64,arm64,$(shell uname -m)))
@@ -39,8 +41,12 @@ docker-manifest:
 	docker manifest create -a $(IMAGE):$(TAG) $(foreach PLATFORM,$(DOCKER_PLATFORMS),$(IMAGE):$(TAG)_$(subst /,_,$(PLATFORM)))
 	docker manifest push $(IMAGE):$(TAG)
 
+.PHONY: check-tag
+check-tag:
+	@test -n "$(TAG)" || { echo "TAG is empty: HEAD is not at a tag. Pass TAG=<tag> explicitly."; exit 1; }
+
 .PHONY: release
-release:
+release: check-tag
 	@$(MAKE) all-push docker-manifest --no-print-directory
 
 .PHONY: version
