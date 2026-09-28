@@ -45,6 +45,8 @@ COPY configdb.sh /scripts/configdb.sh
 COPY sharding.sh /scripts/sharding.sh
 COPY mongos.sh /scripts/mongos.sh
 COPY common.sh /scripts/common.sh
+COPY branch-recovery.sh /scripts/branch-recovery.sh
+COPY branch-recovery.js /scripts/branch-recovery.js
 COPY --from=builder peer-finder /scripts/peer-finder
 
 RUN chmod -c 755 /scripts/peer-finder \
@@ -55,7 +57,8 @@ RUN chmod -c 755 /scripts/peer-finder \
  /scripts/configdb.sh \
  /scripts/sharding.sh \
  /scripts/mongos.sh \
- /scripts/common.sh
+ /scripts/common.sh \
+ /scripts/branch-recovery.sh
 
 ENV SSL_MODE ""
 ENV CLUSTER_AUTH_MODE ""
